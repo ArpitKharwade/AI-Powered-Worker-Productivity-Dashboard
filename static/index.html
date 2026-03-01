@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>AI Worker Productivity Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="title">AI Worker Productivity Dashboard</div>
+      <div class="controls">
+        <select id="filterWorker"><option value="">All workers</option></select>
+        <select id="filterStation"><option value="">All stations</option></select>
+        <div class="action-row">
+          <button class="btn" id="btnReseed">Reseed Data</button>
+          <button class="btn secondary" id="btnGenerate">Generate Event</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div>
+        <div id="factory" class="card"></div>
+
+        <div class="card" style="margin-top:12px">
+          <h3 style="margin:0 0 8px 0">Workers</h3>
+          <div id="workers"></div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3 style="margin:0 0 8px 0">Workstations</h3>
+          <div id="stations"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h3 style="margin:0 0 8px 0">Details</h3>
+          <div id="details"><div class="small">Select a worker or station to view details.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
