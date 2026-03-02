@@ -144,6 +144,7 @@
 #new main.py
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from . import db, models, schemas, metrics
@@ -162,7 +163,13 @@ app.add_middleware(
 
 # ------------------- Serve Frontend at Root -------------------
 # This makes "/" automatically serve static/index.html
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/")
+def root():
+    # serve the SPA index file at root so frontend + backend are on single origin
+    return FileResponse("static/index.html")
 
 
 # ------------------- DB Dependency -------------------
