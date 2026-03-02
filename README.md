@@ -11,6 +11,7 @@ https://ai-powered-worker-productivity-dashboard-d8nb.onrender.com/
 
 ### Edge → Backend → Dashboard Flow
 
+```
 AI Cameras (Edge)
         ↓
 Structured JSON Events
@@ -21,11 +22,12 @@ FastAPI Backend
         ↓
 SQLite Database (events.db)
         ↓
-Metrics Engine (dynamic aggregation)
+Metrics Engine (Dynamic Aggregation)
         ↓
 GET /metrics
         ↓
 Frontend Dashboard (static/index.html)
+```
 
 ### Stack Used
 
