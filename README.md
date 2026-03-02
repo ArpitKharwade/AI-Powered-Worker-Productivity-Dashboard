@@ -1,81 +1,319 @@
 # AI-Powered Worker Productivity Dashboard
 
-This repository contains a small production-style web application that ingests AI-generated events from CCTV CV systems, stores them, computes productivity metrics, and displays them in a dashboard.
+A production-style full-stack application that ingests AI-generated worker activity events from CCTV systems and computes real-time productivity metrics across workers, workstations, and the entire factory.
 
-Run locally (development):
+Live Deployment:
+https://ai-powered-worker-productivity-dashboard-d8nb.onrender.com/
 
-1. Create a Python environment and install dependencies:
+---
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-```
+## 1. Architecture Overview
 
-2. Start the app:
+### Edge → Backend → Dashboard Flow
 
-```powershell
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
+AI Cameras (Edge)
+        ↓
+Structured JSON Events
+        ↓
+POST /events
+        ↓
+FastAPI Backend
+        ↓
+SQLite Database (events.db)
+        ↓
+Metrics Engine (dynamic aggregation)
+        ↓
+GET /metrics
+        ↓
+Frontend Dashboard (static/index.html)
 
-3. Seed sample data (or use the dashboard button):
+### Stack Used
 
-```powershell
-curl -X POST http://localhost:8000/seed
-```
+- Backend: FastAPI
+- Database: SQLite (SQLAlchemy ORM)
+- Frontend: HTML + JavaScript
+- Deployment: Render Web Service
+- Containerization: Docker
 
-4. Open dashboard at: http://localhost:8000/static/index.html — the dashboard includes:
-  - Filters for worker and workstation
-  - A "Reseed Data" button to repopulate dummy data
-  - A "Generate Event" button to push a random working/product_count event
-  - Clickable worker/station rows to view a details panel and send a quick product_count event
+The backend serves both APIs and the static dashboard.
 
-Docker:
+---
 
-```powershell
-docker build -t ai-dashboard .
-docker run -p 8000:8000 ai-dashboard
-```
+## 2. Database Schema
 
-Architecture
-- Backend: FastAPI + SQLite (SQLAlchemy)
-- Frontend: simple static HTML/JS served by FastAPI
-- DB: SQLite persisted to `events.db`
+Three core tables:
 
-Database Schema
-- `workers` (worker_id PK, name)
-- `workstations` (station_id PK, name)
-- `events` (id PK, timestamp, worker_id FK, workstation_id FK, event_type, confidence, count)
+### Workers
+- worker_id (Primary Key)
+- name
 
-Metric definitions & assumptions
-- Worker-level:
-  - Total active time: sum of durations between "working" events and the next state event (hours).
-  - Total idle time: sum of durations between "idle" events and the next state event (hours).
-  - Utilization %: active / (active + idle).
-  - Total units produced: sum of `product_count` events' `count` for the worker.
-  - Units per hour: units_produced / total_active_time.
-- Workstation-level:
-  - Occupancy time: sum of durations where workstation had `working` events.
-  - Utilization %: occupancy_time / observed_time_window.
-  - Throughput: units produced / observed_time_window.
-- Factory-level:
-  - Total productive time: sum of worker total_active_time.
-  - Total production count: sum of worker units_produced.
-  - Average production rate: total_production / observed_time_window.
-  - Average utilization: mean of worker utilizations.
+### Workstations
+- station_id (Primary Key)
+- name
 
-Event handling assumptions
-- Intermittent connectivity: clients can buffer and retry; backend dedupes exact-duplicate events via an application-unique constraint; ingestion is idempotent for identical events.
-- Duplicate events: insert uses a unique index on (timestamp, worker_id, workstation_id, event_type, count); duplicates return 400 and are ignored by clients.
-- Out-of-order timestamps: metrics computation sorts events by timestamp before computing durations; this handles re-ordered arrivals.
+### Events
+- id (Primary Key)
+- timestamp (datetime)
+- worker_id (Foreign Key)
+- workstation_id (Foreign Key)
+- event_type (working | idle | absent | product_count)
+- confidence (float)
+- count (int, used for product_count)
 
-How to extend for model/versioning, drift, and scale
-- Model versioning: include `model_version` field in events; store metadata; add endpoints to query by version and track metrics per version.
-- Detect model drift: compute distributions of confidence and event rates over time; alert when distributions shift beyond thresholds (e.g., KL divergence, population stability index).
-- Trigger retraining: schedule retraining when drift thresholds exceeded or when labels become available; use a CI/CD pipeline to train, validate and promote model versions.
+Duplicate events are prevented using a unique constraint on:
+(timestamp, worker_id, workstation_id, event_type, count)
 
-Scaling from 5 → 100+ cameras → multi-site
-- Move from SQLite → Postgres for concurrency and size.
-- Use batching and message queues (Kafka, SQS) at ingestion to handle bursty input.
-- Shard events by site/camera and aggregate metrics via worker/job runners or stream processors (Flink, ksqlDB).
-- Add caching and precomputed aggregates (daily/hourly) for dashboard performance.
+All events are persisted permanently in SQLite.
+
+---
+
+## 3. API Endpoints
+
+### Ingest AI Event
+POST /events
+
+Example:
+{
+  "timestamp": "2026-01-15T10:15:00Z",
+  "worker_id": "W1",
+  "workstation_id": "S3",
+  "event_type": "working",
+  "confidence": 0.93,
+  "count": 1
+}
+
+Duplicate events are gracefully ignored.
+
+---
+
+### Fetch Metrics
+GET /metrics
+
+Returns factory-level, worker-level, and workstation-level metrics.
+
+---
+
+### List Workers
+GET /workers
+
+### List Workstations
+GET /workstations
+
+---
+
+### Seed Data
+POST /seed
+
+Clears existing data and regenerates a simulated 8-hour shift.
+
+This allows evaluators to refresh dummy data without modifying code or database manually.
+
+---
+
+## 4. Metric Definitions & Assumptions
+
+### Time-Based Computation Model
+
+Events are sorted chronologically per worker.
+
+Duration between two consecutive events is calculated as:
+
+duration = next.timestamp - current.timestamp
+
+Time is converted to hours.
+
+---
+
+### Worker-Level Metrics
+
+Active Time:
+Sum of durations where event_type = "working"
+
+Idle Time:
+Sum of durations where event_type = "idle"
+
+Utilization %:
+active_time / (active_time + idle_time) × 100
+
+Total Units Produced:
+Sum of count where event_type = "product_count"
+
+Units per Hour:
+total_units / active_time
+
+---
+
+### Workstation-Level Metrics
+
+Occupancy Time:
+Sum of working durations for that station
+
+Utilization %:
+occupancy_time / total_observed_time
+
+Total Units Produced:
+Sum of product_count events at that station
+
+Throughput Rate:
+total_units / occupancy_time
+
+---
+
+### Factory-Level Metrics
+
+Total Productive Time:
+Sum of active time across all workers
+
+Total Production Count:
+Sum of all product_count events
+
+Average Production Rate:
+Average of worker production rates
+
+Average Utilization:
+Average of worker utilization %
+
+---
+
+### Assumptions
+
+- Time between consecutive events defines activity duration
+- Events may arrive out-of-order; they are sorted before aggregation
+- Product_count events represent discrete production increments
+- Metrics are dynamically computed on every request (no caching)
+
+---
+
+## 5. Frontend Dashboard
+
+The dashboard displays:
+
+- Factory-level summary metrics
+- Worker metrics table (6 workers)
+- Workstation metrics table (6 stations)
+- Worker & station filters
+- Reseed button
+- Generate Event button
+
+The UI is intentionally minimal but structured and functional.
+
+---
+
+## 6. Handling Edge Cases
+
+### Intermittent Connectivity
+
+In production:
+- Edge devices would buffer events locally
+- Retry with exponential backoff
+- Backend supports idempotent inserts
+
+---
+
+### Duplicate Events
+
+Handled using database-level unique constraint.
+
+If duplicate insertion is attempted:
+- Transaction rolls back
+- Duplicate is ignored safely
+
+---
+
+### Out-of-Order Timestamps
+
+Events are sorted chronologically before computing durations.
+
+This ensures accurate time-based calculations even if events arrive late.
+
+---
+
+## 7. Model Versioning Strategy
+
+To support future ML model updates:
+
+- Add model_version column to events
+- Store version with each AI-generated event
+- Compare production metrics across model versions
+- Roll back if performance degrades
+
+---
+
+## 8. Model Drift Detection
+
+Potential strategy:
+
+- Monitor confidence distribution shifts
+- Track drop in production rate
+- Use statistical tests (KS-test, PSI)
+- Alert if utilization deviates beyond threshold
+
+---
+
+## 9. Scaling Strategy
+
+### From 5 Cameras → 100+ Cameras
+
+- Introduce message queue (Kafka / RabbitMQ)
+- Separate ingestion service
+- Horizontal scaling of API layer
+- Use PostgreSQL instead of SQLite
+
+---
+
+### Multi-Site Deployment
+
+- Separate DB per factory
+- Central aggregation service
+- Cloud object storage for raw logs
+- Multi-tenant architecture
+
+---
+
+## 10. Containerization
+
+Dockerized for consistent deployment.
+
+Run locally:
+
+docker build -t worker-dashboard .
+docker run -p 8000:8000 worker-dashboard
+
+Access:
+http://localhost:8000/
+
+---
+
+## 11. Deployment
+
+Hosted on Render as a Web Service.
+
+Root URL serves dashboard:
+https://ai-powered-worker-productivity-dashboard-d8nb.onrender.com/
+
+Swagger Docs:
+https://ai-powered-worker-productivity-dashboard-d8nb.onrender.com/docs
+
+---
+
+## 12. Tradeoffs
+
+- SQLite chosen for simplicity (single-node use case)
+- Metrics computed dynamically (no caching layer)
+- No authentication layer (assignment scope)
+- No async event streaming (kept simple for evaluation)
+
+---
+
+## 13. Summary
+
+This project demonstrates:
+
+- Event-driven metric computation
+- Production-style API design
+- Database schema modeling
+- Handling of real-world edge cases
+- Containerized deployment
+- System scalability planning
+
+The system mimics how AI-based factory monitoring solutions would aggregate and expose productivity insights in real-world environments.
