@@ -5,6 +5,9 @@ A production-style full-stack application that ingests AI-generated worker activ
 Live Deployment:
 https://ai-powered-worker-productivity-dashboard-d8nb.onrender.com/
 
+Github Repository Link:
+https://github.com/ArpitKharwade/AI-Powered-Worker-Productivity-Dashboard
+
 ---
 
 ## 1. Architecture Overview
